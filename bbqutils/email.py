@@ -1,7 +1,7 @@
 import smtplib
 from email.message import Message
 from email.utils import formatdate
-
+from threading import Lock, Thread
 
 class Mailer:
 	def __init__(self, host, port=587, user=None, passwd=None):
@@ -9,6 +9,7 @@ class Mailer:
 		self.port = port
 		self.user = user
 		self.passwd = passwd
+		self.lock = Lock()
 
 	def connect(self):
 		self.server = smtplib.SMTP(self.host)
@@ -19,20 +20,34 @@ class Mailer:
 		if self.user:
 			self.server.login(self.user, self.passwd)
 	
-	def send_email(self, frm=None, to=None, cc=None, bcc=None, subject=None, text=None, date=None):
-		messages = []
-		rl = recipient_list(to, cc)
-		to = recipient_list(to)
-		cc = recipient_list(cc)
-		if rl:
-			messages.append((rl, create_email(frm, to, cc, None, subject, text, date)))
+	def disconnect(self):
+		return self.server.quit()
 
-		if isinstance(bcc, list):
-			for recip in bcc:
-				messages.append((recip, create_email(frm, to, cc, recip, subject, text, date)))
+	def send_email(self, frm=None, to=None, cc=None, bcc=None, subject=None, text=None, date=None, reply_to=None):
+		x = 0
+		while x < 3:
+			x += 1
+			self.lock.acquire()
+			try:
+				messages = []
+				rl = recipient_list(to, cc)
+				to = recipient_list(to)
+				cc = recipient_list(cc)
+				if rl:
+					messages.append((rl, create_email(frm, to, cc, None, subject, text, date, reply_to)))
 		
-		for m in messages:
-			self.server.sendmail(frm, m[0], m[1].as_string())
+				if isinstance(bcc, list):
+					for recip in bcc:
+						messages.append((recip, create_email(frm, to, cc, recip, subject, text, date, reply_to)))
+				
+				for m in messages:
+					self.server.sendmail(frm, m[0], m[1].as_string())
+				return
+			except smtplib.SMTPServerDisconnected:
+				self.connect()
+			finally:
+				self.lock.release()
+		raise Exception("Failed to send email three times.")
 
 
 def recipient_list(*args):
@@ -46,7 +61,7 @@ def recipient_list(*args):
 		return "; ".join(out)
 
 
-def create_email(frm=None, to=None, cc=None, bcc=None, subject=None, text=None, date=None):
+def create_email(frm=None, to=None, cc=None, bcc=None, subject=None, text=None, date=None, reply_to=None):
 	msg = Message()
 	if frm:
 		msg["From"] = frm
@@ -64,5 +79,7 @@ def create_email(frm=None, to=None, cc=None, bcc=None, subject=None, text=None, 
 		msg["Date"] = formatdate(localtime=True)
 	else:
 		msg["Date"] = formatdate(date, localtime=True)
+	if reply_to:
+		msg["Reply-To"] = reply_to
 	return msg
 
