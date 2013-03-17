@@ -27,7 +27,7 @@ class Mailer:
 	def disconnect(self):
 		return self.server.quit()
 
-	def send_email(self, frm=None, to=None, cc=None, bcc=None, subject=None, text=None, date=None, reply_to=None, attachments=[]):
+	def send_email(self, frm=None, to=None, cc=None, bcc=None, subject=None, text='', date=None, reply_to=None, attachments=[]):
 		x = 0
 		while x < 3:
 			x += 1
